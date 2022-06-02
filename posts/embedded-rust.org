@@ -1,0 +1,44 @@
+#+TITLE:       Embedded Rust
+#+AUTHOR:      wose
+#+DATE:        <2017-08-26 Sat>
+#+TAGS:        rust, log, cortex-m, ts100
+I started to play with [[https://rust-lang.org][Rust]] about a year ago. I followed the lecture
+[[https://github.com/LukasKalbertodt/programmieren-in-rust][/Programmieren in Rust/ by Lukas Kalbertodt]] which gives a very good introduction
+of the language concepts. I really enjoyed the lecture and kind of relearned
+programming in the process.
+
+In other news, but around the same time, I got a cheap CTC 3D Printer and
+started printing stuff. At first spare and improved parts for the CTC to make it
+more usable and reduce the print failures. Setting up and tweaking the pre
+process toolchain ([[http://www.openscad.org/][OpenSCAD]], [[https://www.freecadweb.org/][FreeCAD]], [[http://slic3r.org/][Slic3r]], ...) to prepare the CAD files was
+part of it. I realized that owning a cheap 3D Printer enables you to build a
+better one. There are plenty of projects and parts on sites like [[https://www.thingiverse.com/][Thingiverse]]
+that you can choose from. So I started to build one.
+
+[[../images/dragonfly.png]]
+
+Most custom build 3D Printers use an Arduino based controller. The firmware
+interprets G-Code from a serial connection or a file on the SD card. Extension
+boards like [[http://reprap.org/wiki/RAMPS_1.4][RAMPS]] come with everything you need to control a hand full of
+stepper motors, a hot end, heat bed, SD card and so on. But just using these
+plug'n'play components would be boring and too easy, right?
+
+So why not combine the Rust learning and 3D printer project? Thanks to [[https://github.com/japaric][Jorge
+Aparicio]] and his awesome work and [[http://blog.japaric.io/][blog series]] explaining how to get rust working
+on ARM Cortex-M microcontrollers, it was quite easy to get started.
+
+As Rust novice and knowing almost nothing about register level programming I was
+already happy after I got an LED blinking on the [[http://www.st.com/en/evaluation-tools/stm32f3discovery.html][STM32F3Discovery]] and [[http://wiki.stm32duino.com/index.php?title=Blue_Pill][Blue Pill]]
+board. I decided to go with the /Blue Pill/ and its STM32F103 chip for now and
+started connecting all sorts of LCDs, OLEDs and stepper drivers I had laying
+around. After I got comfortable with browsing the huge reference manual and
+using the [[https://github.com/japaric/stm32f103xx][generated support crate]] it was time for a small world real project.
+
+Fortunately the soldering iron (TS-100) I bought runs of an stm32f103 and is
+built to be hacked. So I started building an alternative firmware in Rust:
+http://github.com/wose/ts100
+
+[[../images/ts100.png]]
+
+It doesn't do anything useful yet, but I hope this will change soon as I get
+more time to

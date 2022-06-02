@@ -1,0 +1,416 @@
+#+TITLE:       Let's write an embedded-hal-driver
+#+AUTHOR:      wose
+#+DATE:        <2018-02-23 Fri>
+#+TAGS:        rust, embedded, embedded-hal-driver
+Mid January japaric started [[https://github.com/rust-lang-nursery/embedded-wg/issues/39]["The weekly driver initiative"]] with the goal to
+kick-start releases of platform agnostic [[https://docs.rs/embedded-hal/0.1.0/embedded_hal/][embedded-hal]] based driver crates. In
+this post we'll build an =embedded-hal-driver= for the *AT24C32*-EEPROM chip.
+
+** What's an EEPROM?
+:PROPERTIES:
+:ID:       0b48671a-3cad-4866-9a54-185f55df9ffe
+:END:
+
+EEPROM stands for electrically erasable read only memory. It is quite
+slow and has a low memory density compared to flash memory, but allows single
+byte operations (read/write). Modern EEPROMs also offer multi byte page reads
+and writes.
+
+** What is it good for?
+:PROPERTIES:
+:ID:       a401dbf5-72ab-4245-bb74-051767601282
+:END:
+
+While you shouldn't use EEPROMs to store huge or often changing data, they are
+useful to hold serial numbers, telephone numbers, configuration data,
+calibration data... basically everything which is seldom changed. EEPROM cells
+can typically be rewritten about a million times, so think about it before you
+dump your logs or sensor data into it.
+
+** AT24C32
+:PROPERTIES:
+:ID:       e0217d90-00e4-43ac-8f8c-dee44eded6f0
+:END:
+
+I happen to own an DS3231 real time clock (RTC) breakout board which also
+contains an Atmel AT24C32 EEPROM and is accessible through /i2c/-bus. We ignore
+the RTC for now and focus on the EEPROM.
+
+A good start is to take a look in the [[https://www.elecrow.com/download/24C32.pdf][AT24C32 datasheet]] to get an overview of
+the chips opcodes and features. The device supports up to eight different /i2c/
+addresses depending on the state of the =A0=, =A1= and =A2= pin. This means we
+can connect up to eight of these EEPROMs to a single /i2c/-bus (without address
+modifications at runtime). And there are some /commands/ we'll have to implement
+to actually write or read bytes:
+
+- single byte write
+- page write
+- current address read
+- random read
+- sequential read
+
+** Electrical connection
+:PROPERTIES:
+:ID:       da665945-cdbf-4bc2-b7a3-2fe450e48af0
+:END:
+
+The device communicates over the /i2c/-bus to the outside world. Mine is part of
+a RTC breakout board which looks like this:
+
+[[../images/ds3231_at24c32.png]]
+
+The orange rectangle marks the AT24C32 chip. The green one shows 3 solder
+bridges you can short to change the /i2c/ address. The red rectangle marks the 4
+pins we need to connect to our test machine. I'm using a raspberry pi 2 and the
+following connection:
+
+| RPi pin    | AT24C32 pin | J1 pin |
+|------------+-------------+--------|
+| 1 3.3V     | 8 VCC       | 5 VCC  |
+| 9 GND      | 4 GND       | 6 GND  |
+| 3 I2C1_SDA | 5 SDA       | 4 SDA  |
+| 5 I2C1_SCL | 6 SCL       | 3 SCL  |
+
+** Testing the setup
+:PROPERTIES:
+:ID:       3a3ae7dc-d579-4321-b3f3-7d0150458ca6
+:END:
+
+We can now test the connection by scanning the bus for devices. To do this we'll
+first need to enable /i2c/ on the RPi:
+
+- =sudo raspi-config=
+- =5 Interfacing Options=
+- =P5 I2C=
+- =<Yes>=
+
+#+BEGIN_EXAMPLE
+$ ls /dev/i2c*
+/dev/i2c-1
+#+END_EXAMPLE
+
+Let's install some helpers:
+
+#+BEGIN_EXAMPLE
+$ sudo apt-get install -y i2c-tools
+#+END_EXAMPLE
+
+And finally check if our device is sitting in the /i2c/-bus.
+
+#+BEGIN_EXAMPLE
+$ i2cdetect -y 1
+     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+00:          -- -- -- -- -- -- -- -- -- -- -- -- --
+10: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+20: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+30: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+40: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+50: -- -- -- -- -- -- -- 57 -- -- -- -- -- -- -- --
+60: -- -- -- -- -- -- -- -- 68 -- -- -- -- -- -- --
+70: -- -- -- -- -- -- -- --
+#+END_EXAMPLE
+
+There they are. Address =0x68= is the RTC and =0x57= is our AT24C32 because all
+solder bridges are open and the =A*= pins are pulled up. The /base address/ of
+the device is =0b1010000= (=0x50=) and the last 3 LSB are determined by the =A*=
+pins.
+
+** The driver crate
+:PROPERTIES:
+:ID:       d510c299-496c-45ce-a287-76dba5bcbfb4
+:END:
+
+The hardware works, now let's talk to it. We let cargo create a new crate and
+setup a new target to cross compile to the raspberry pi, so we can quickly build
+an example and test it on our target.
+
+#+BEGIN_EXAMPLE
+$ cargo new at24cx
+    Created library `at24cx` project
+$ cd at24cx
+$ mkdir .cargo
+$ editor .cargo/config && cat $_
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc-6"
+$ cargo build --target=armv7-unknown-linux-gnueabihf
+   Compiling at24cx v0.1.0 (file:///home/wose/projects/rust-embedded/at24cx)
+    Finished dev [unoptimized + debuginfo] target(s) in 0.34 secs
+#+END_EXAMPLE
+
+** Dependencies
+:PROPERTIES:
+:ID:       948189f9-fd77-41db-91c2-0396185995fd
+:END:
+
+=embedded-hal= provides /i2c/ traits we'll use to talk to the /i2c/-bus in a
+platform agnostic way. To test it we'll need an implementation of the
+=embedded-hal= traits. [[https://github.com/japaric/linux-embedded-hal][linux-embedded-hal]] provides this implementation for linux
+and thus for the raspberry pi.
+
+#+BEGIN_EXAMPLE
+$ cargo add embedded-hal
+$ cargo add --dev linux-embedded-hal
+#+END_EXAMPLE
+
+** Write/Read a single byte
+:PROPERTIES:
+:ID:       546bfcae-a2c8-46ce-ac1e-53cde5c48aac
+:END:
+
+Let's try to create a minimal driver to write a single byte to the EEPROM and
+read it back. Another look in the datasheet reveals what we need to send to
+write a single byte:
+
+[[../images/byte-write.png]]
+
+- the device address (=0x57=) with the =R/W= bit =0= (write to the slave)
+- MSBs of the 16 bit address (the memory address is actually just 12 bit for the
+  AT24C32)
+- LSBs of the 16 bit address
+- the data byte
+
+What about reading a random memory address?
+
+[[../images/random-read.png]]
+
+Similar to writing a single byte, we first need to /write/ the device and memory
+address to the /i2c/-bus and then start a read by sending the device address
+with the =R/W= bit =1= (read from the slave). The EEPROM will then send the data
+at that memory address.
+
+#+NAME: lib.rs
+#+BEGIN_SRC rust
+#![no_std]
+
+extern crate embedded_hal as hal;
+
+use hal::blocking::i2c::{Write, WriteRead};
+
+// we'll add support for the other 7 addresses later
+pub const ADDRESS: u8 = 0x57;
+
+/// AT24Cx Driver
+pub struct AT24Cx;
+
+impl AT24Cx
+{
+    pub fn new() -> Self {
+        AT24Cx {}
+    }
+
+    pub fn write<I2C, E>(&self, i2c: &mut I2C, address: u16, byte: u8) -> Result<(), E>
+    where
+        I2C: Write<Error = E> + WriteRead<Error = E>,
+    {
+        let msb = (address >> 8) as u8;
+        let lsb = (address & 0xFF) as u8;
+        i2c.write(ADDRESS, &[msb, lsb, byte])
+    }
+
+    pub fn read<I2C, E>(&self, i2c: &mut I2C, address: u16) -> Result<u8, E>
+    where
+        I2C: Write<Error = E> + WriteRead<Error = E>,
+    {
+        let msb = (address >> 8) as u8;
+        let lsb = (address & 0xFF) as u8;
+        let mut buffer = [0];
+        i2c.write_read(ADDRESS, &[msb, lsb], &mut buffer)?;
+        Ok(buffer[0])
+    }
+}
+#+END_SRC
+
+Now we add an example to actually test our driver.
+#+NAME: examples/rpi.rs
+#+BEGIN_SRC rust
+extern crate at24cx;
+extern crate linux_embedded_hal as hal;
+
+use at24cx::AT24Cx;
+use hal::I2cdev;
+use std::thread;
+use std::time::Duration;
+
+fn main() {
+    let mut dev = I2cdev::new("/dev/i2c-1").unwrap();
+    let eeprom = AT24Cx::new();
+
+    eeprom.write(&mut dev, 0x0042, 42).unwrap();
+
+    // wait 10ms for the write to finish or the eeprom will NAK the next write or read request
+    thread::sleep(Duration::from_millis(10));
+
+    println!(
+        "The answer to the ultimate question of life, the universe and everything is {}.",
+        eeprom.read(&mut dev, 0x0042).unwrap()
+    );
+}
+#+END_SRC
+
+Build and run it on the RPi:
+#+BEGIN_EXAMPLE
+$ cargo build --target=armv7-unknown-linux-gnueabihf --example rpi
+$ # copy the example to your RPi
+$ ssh pi@pi
+$ ./rpi
+The answer to the ultimate question of life, the universe and everything is 42.
+#+END_EXAMPLE
+
+/Yay!/ This driver will now work on any platform which has an =embedded-hal=
+/i2c/ trait implementation. But there is more. We can get rid of the delay in
+our example by polling the EEPROM for the finished write operation and also
+write and read multiple bytes in one go.
+
+** Memory pages
+:PROPERTIES:
+:ID:       6b86d775-f887-4e31-8249-8d290c62c22f
+:END:
+
+The memory inside the EEPROM can be visualized as a table. The rows represent
+/pages/ and the columns the data words inside a page. The size of a page and
+data word is device specific. The AT24C32 has a word size of 8 bit (or 1 byte)
+,a page size of 32 words and has 128 pages (128 * 32 * 8 = 32768 bits).
+
+Why is this important? Every time we write or read a word the internal address
+pointer of the EEPROM is incremented, so the next read or write operation will
+use the next byte. But if we hit a page boundary we won't move to the next page
+but instead start at the beginning of the current page (only the lower 5 bits of
+the memory address are incremented). Sending more bytes than the page size (32)
+will overwrite data we already sent.
+
+[[../images/page-write.png]]
+
+A page write is very similar to single byte write, just send more data bytes
+instead of the =STOP=.
+
+#+BEGIN_SRC rust
+...
+    pub fn write_page<I2C, E>(&self, i2c: &mut I2C, address: u16, data: &[u8]) -> Result<(), E>
+    where
+        I2C: Write<Error = E> + WriteRead<Error = E>,
+    {
+        // limit is the page size or we would overwrite data we jyst sent
+        let len = min(data.len(), 32);
+
+        // 2 address bytes + page size
+        let mut  buffer = [0; 34];
+        {
+            let (addr, dst) = buffer.split_at_mut(2);
+            BE::write_u16(addr, address);
+            dst[..len].clone_from_slice(&data[..len]);
+        }
+
+        i2c.write(ADDRESS, &buffer[..data.len()+2])
+    }
+...
+#+END_SRC
+
+Note that we now use the [[https://docs.rs/byteorder/1.2.1/byteorder/][byteorder]] crate to /format/ the address instead of
+doing so by hand. The following example will test this by filling page 1 with
+=0xEE=.
+
+#+BEGIN_SRC rust
+extern crate at24cx;
+extern crate linux_embedded_hal as hal;
+
+use at24cx::AT24Cx;
+use hal::I2cdev;
+
+fn main() {
+    let mut dev = I2cdev::new("/dev/i2c-1").unwrap();
+    let eeprom = AT24Cx::new();
+    eeprom.write_page(&mut dev, 32, &[0xEE; 32]).unwrap();
+}
+#+END_SRC
+
+To read more than one byte in one go we'll modify the current =read= method to
+read an arbitrary amount of bytes. Sequential read operations are not limited to
+a single page. If the end of the memory is reached the internal address pointer
+will roll over and continue at the beginning of the memory. So in theory we
+should be able to read the entire EEPROM with one transaction.
+
+[[../images/sequential-read.png]]
+
+#+BEGIN_SRC rust
+...
+    pub fn read<B, I2C, E>(&self, i2c: &mut I2C, address: u16) -> Result<B, E>
+    where
+        B: Unsize<[u8]>,
+        I2C: Write<Error = E> + WriteRead<Error = E>,
+    {
+        let mut addr = [0; 2];
+        BE::write_u16(&mut addr, address);
+
+        let mut buffer: B = unsafe { mem::uninitialized() };
+        {
+            let slice: &mut [u8] = &mut buffer;
+            i2c.write_read(ADDRESS, &addr, slice)?;
+        }
+
+        Ok(buffer)
+    }
+...
+#+END_SRC
+
+The following example will dump the complete EEPROM memory and we should see our
+/answer/ from the first example somewhere near the beginning of the memory and
+page 1 should contain =0xEE= for every byte.
+
+#+BEGIN_SRC rust
+extern crate at24cx;
+extern crate linux_embedded_hal as hal;
+
+use at24cx::AT24Cx;
+use hal::I2cdev;
+
+fn main() {
+    let mut dev = I2cdev::new("/dev/i2c-1").unwrap();
+    let eeprom = AT24Cx::new();
+
+    let mem: [u8;4096] = eeprom.read(&mut dev, 0x0000).unwrap();
+    for page in mem.chunks(32) {
+        for byte in page {
+            print!("{:X} ", byte);
+        }
+        println!();
+    }
+}
+#+END_SRC
+
+And run it:
+
+#+BEGIN_EXAMPLE
+$ ./rpi
+41 42 43 44 45 46 47 48 49 4A 4B 4C 4D 4E 4F 50 51 52 53 54 55 56 57 58 59 5A FF FF FF FF FF FF
+EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE EE
+FF FF 2A FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF
+FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF
+FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF
+...
+#+END_EXAMPLE
+
+We can spot the previously set value =42= (=0x2A=) at row 3 column 3 with the
+memory address =2 * 32 + 2 = 66 (0x0042)=, which was the address we used for the
+write. /Yay!/
+
+We can also notice that the start of page 0 is filled with the letters A-Z. This
+may be some remains from factory tests, they weren't written by me.
+
+** Conclusion and TODOs
+:PROPERTIES:
+:ID:       ff25f060-d507-441d-8309-bf9edf593d49
+:END:
+
+We now have a platform agnostic driver for the AT24C32 EEPROM. Actually, we can
+also use it with the AT24C64 EEPROM, because they have the same page and word
+size. Many EEPROMs have the same or a very similar interface and they differ
+only in address and page size. Adding other chips should be easy. I'll do some
+refactoring to make this straightforward and add some of the AT24CXXX chips
+myself. Pull requests are always welcome.
+
+The current [[https://github.com/wose/at24cx][WIP driver is on github]]. And will be released to [[https://crates.io][crates.io]] after the
+ACK polling has been added. The [[https://github.com/wose/at24cx/blob/master/README.md][README.md]] contains a list of implemented and
+planned features. Feel free to open an issue if something is missing or could be
+improved.
+
+I'll try to cover the DS3231 RTC in a later post ([[https://github.com/wose/ds3231][WIP driver]]).

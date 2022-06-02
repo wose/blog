@@ -1,0 +1,15 @@
+#+TITLE:       Reset
+#+AUTHOR:      wose
+#+DATE:        <2017-08-22 Tue>
+#+TAGS:        log
+It has been almost two years since the last blog entry and the amount of useful
+information was always questionable so I ditched the whole thing and started
+from scratch. I'm now using [[https://github.com/kelvinh/org-page][org-page]] which boils down to:
+
+- =M-x op/new-post=
+- write the post as Org file
+- =git commit -a -m "adds new post"=
+- =M-x op/do-publication=
+
+to create and publish a new post. We'll see if these are few enough steps for
+the lazy me to keep actually posting some stuff.

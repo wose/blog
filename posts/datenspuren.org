@@ -1,0 +1,28 @@
+#+TITLE:       Datenspuren
+#+AUTHOR:      wose
+#+DATE:        <2017-11-03>
+#+TAGS:        log, datenspuren, ccc
+At last years [[https://datenspuren.de][Datenspuren]] I gave a talk about super resolution using neural
+nets titled /"Do we have an image enhancer that can bit map?"/. The talk was
+[[https://media.ccc.de/v/DS2016-7840-do_we_have_an_image_enhancer_that_can_bit_map][recorded]] and the [[https://github.com/wose/ds2016][slides and example net are on github]].
+
+This year I decided to give a talk I wanted to give for some years now but never
+really got to it. Around 2015 I learned about the ESA Copernicus Program and the
+Sentinel satellites. I was surprised that the data and the tools to process it
+were freely available and open source, but also realized that not many people
+knew about it.
+
+I tried to change this (a little bit) with this years talk /"Freie Daten(spuren)
+aus dem All"/
+
+*Abstract (de)*
+#+BEGIN_QUOTE
+  Dieser Vortrag gibt einen kleinen Überblick über das ESA Copernicus Programm,
+  einem umfangreichen Erdbeobachtungsprogramm. An Beispielen werden die einzelnen
+  Sensoren und Instrumente der Sentinel Satelliten erklärt. Eine abschließende
+  Demo zeigt, wie jeder die frei zugänglichen Daten in eindrucksvolle Bilder
+  unseres Planeten verwandeln kann.
+#+END_QUOTE
+
+- [[https://github.com/wose/ds2017][Slides]]
+- [[https://media.ccc.de/v/DS2017-8680-freie_daten_spuren_aus_dem_all][Video]]

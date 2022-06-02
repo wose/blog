@@ -1,0 +1,118 @@
+#+TITLE:       GDB + SVD
+#+AUTHOR:      wose
+#+DATE:        <2018-01-21 Sun>
+#+TAGS:        log, gdb, svd, embedded, rust
+If you debug embedded inferiors with GDB you might want to check the state of
+some register of some peripheral. You can do this by hand by just reading the
+memory where the register is mapped. This includes consulting the data sheet to
+get the address which is pretty slow if you need to do this often.
+
+There is a GDB plugin called [[https://github.com/bnahill/PyCortexMDebug][PyCortexMDebug]], which enables you to read or write
+registers, show descriptions and list peripherals of micro controllers. The
+peripheral and register information are loaded from a [[http://www.keil.com/pack/doc/CMSIS/SVD/html/index.html][System View Description
+file (SVD)]] You can find many svd files from different vendors in this
+repository: [[https://github.com/posborne/cmsis-svd/][cmsis-svd]].
+
+Unfortunately the plugin only worked if your inferior is written in C/C++
+because the method of actually reading/writing memory uses c-style type casts.
+This doesn't work if you debug a rust inferior like I did. GDBs python API
+provides methods to directly [[https://sourceware.org/gdb/current/onlinedocs/gdb/Inferiors-In-Python.html#index-Inferior_002eread_005fmemory-1][read or write]] a specific address in the inferiors
+memory. So let's use them: https://github.com/wose/PyCortexMDebug
+
+A pull request will be made after I tested it a little more.
+
+After the plugin installation you can add something like the following to your
+=.gdbinit= of your project to activate the plugin and load a specific svd file.
+
+#+BEGIN_EXAMPLE
+source gdb.py
+svd_load STM32F103xx.svd
+#+END_EXAMPLE
+
+=gdb.py= is the one which is part of PyCortexMDebug. You'll have to specify the
+path where you've put it or copy it next to your =.gdbinit=.
+
+After connecting to your target you can use the =svd= command:
+
+#+BEGIN_EXAMPLE
+>>> svd
+Available Peripherals:
+        FSMC:    Flexible static memory controller
+        PWR:     Power control
+        RCC:     Reset and clock control
+        GPIOA:   General purpose I/O
+        GPIOB:   General purpose I/O
+        GPIOC:   General purpose I/O
+        GPIOD:   General purpose I/O
+        GPIOE:   General purpose I/O
+        GPIOF:   General purpose I/O
+        GPIOG:   General purpose I/O
+        AFIO:    Alternate function I/O
+        EXTI:    EXTI
+        DMA1:    DMA controller
+        DMA2:    DMA controller
+        SDIO:    Secure digital input/output interface
+        RTC:     Real time clock
+        BKP:     Backup registers
+        IWDG:    Independent watchdog
+        WWDG:    Window watchdog
+        TIM1:    Advanced timer
+        TIM8:    Advanced timer
+        TIM2:    General purpose timer
+        TIM3:    General purpose timer
+        TIM4:    General purpose timer
+        TIM5:    General purpose timer
+        TIM9:    General purpose timer
+        TIM12:   General purpose timer
+        TIM10:   General purpose timer
+        TIM11:   General purpose timer
+        TIM13:   General purpose timer
+        TIM14:   General purpose timer
+        TIM6:    Basic timer
+        TIM7:    Basic timer
+        I2C1:    Inter integrated circuit
+        I2C2:    Inter integrated circuit
+        SPI1:    Serial peripheral interface
+        SPI2:    Serial peripheral interface
+        SPI3:    Serial peripheral interface
+        USART1:  Universal synchronous asynchronous receiver transmitter
+        USART2:  Universal synchronous asynchronous receiver transmitter
+        USART3:  Universal synchronous asynchronous receiver transmitter
+        ADC1:    Analog to digital converter
+        ADC2:    Analog to digital converter
+        ADC3:    Analog to digital converter
+        CAN:     Controller area network
+        DAC:     Digital to analog converter
+        DBG:     Debug support
+        UART4:   Universal asynchronous receiver transmitter
+        UART5:   Universal asynchronous receiver transmitter
+        CRC:     CRC calculation unit
+        FLASH:   FLASH
+>>> svd/x I2C1
+Registers in I2C1:
+	CR1:    0x00000001  Control register 1
+	CR2:    0x00000018  Control register 2
+	OAR1:   0x00000000  Own address register 1
+	OAR2:   0x00000000  Own address register 2
+	DR:     0x000000B0  Data register
+	SR1:    0x00000001  Status register 1
+	SR2:    0x00000003  Status register 2
+	CCR:    0x00000078  Clock control register
+	TRISE:  0x00000019  TRISE register
+>>> svd I2C1 SR1
+Fields in SR1 of peripheral I2C1:
+	SMBALERT:  0  SMBus alert
+	TIMEOUT:   0  Timeout or Tlow error
+	PECERR:    0  PEC Error in reception
+	OVR:       0  Overrun/Underrun
+	AF:        0  Acknowledge failure
+	ARLO:      0  Arbitration lost (master mode)
+	BERR:      0  Bus error
+	TxE:       0  Data register empty (transmitters)
+	RxNE:      0  Data register not empty (receivers)
+	STOPF:     0  Stop detection (slave mode)
+	ADD10:     0  10-bit header sent (Master mode)
+	BTF:       0  Byte transfer finished
+	ADDR:      0  Address sent (master mode)/matched (slave mode)
+	SB:        1  Start bit (Master mode)
+#+END_EXAMPLE

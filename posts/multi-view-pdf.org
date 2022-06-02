@@ -1,0 +1,42 @@
+#+TITLE:       PDF multi view
+#+AUTHOR:      wose
+#+DATE:        <2018-01-19 Fri>
+#+TAGS:        log, pdf, emacs
+While [[https://github.com/wose/ts100][playing with Rust on μCs]] I've always at least one date sheet or reference
+manual open. These pdf files, especially the reference manuals, are huge (> 1k
+pages) and consume a fair amount of RAM when opened in a viewer like [[https://wiki.gnome.org/Apps/Evince][evince]] or
+[[https://pwmt.org/projects/zathura/][zathura]]. I found myself struggling to navigate between different parts of the
+manual with a pretty high frequency. Take a look at some transfer sequence
+diagram, check the description of the control register, go back to the diagram,
+...
+
+What I needed was a way to view at least two different parts of the same pdf
+file at the same time. Turns out no pdf viewer known to me was able to split the
+view into multiple views on the same document. Opening the file two times works,
+but eats the RAM.
+
+Someone suggested to implement it as some kind of plugin for Atom. Nahhh never,
+if I had that much RAM to waste I would just open the file several times ;-)
+But wait, Atom is an editor, I use an editor, I use Emacs, I bet Emacs can do
+this.
+
+And indeed Emacs would open the pdf file using [[https://www.gnu.org/software/emacs/manual/html_node/emacs/Document-View.html][DocView]] mode and handle it like a
+normal buffer, which means I can open many windows and just point them at
+different parts of the buffer. Cool but not optimal since I had no way to
+recolor the pdf and don't go blind reading these at night (or day, doesn't
+really matter for me). There is an alternative mode to work with pdf files:
+[[https://github.com/politza/pdf-tools][pdf-tools]]. And it's quite awesome. Using its midnight mode and customizing some
+colors I was back to where I left zathura.
+
+#+BEGIN_SRC emacs-lisp
+(custom-set-variables
+    '(pdf-view-midnight-colors (quote ("#f2be0f" . "#1a1a1a"))))
+#+END_SRC
+
+[[../images/emacs-pdf-view.png]]
+
+There is even a spacemacs layer you can enable by adding =pdf-tools= to your
+=dotspacemacs-configuration-layers=.
+
+And there I am wondering why I left Emacs to view pdf files in the first place.
+Stupid me.
