@@ -1,19 +1,18 @@
 (require 'package)
 (setq package-user-dir (expand-file-name "./.packages"))
 (setq package-archives '(("melpa" . "https://melpa.org/packages/")
-                         ("elpa" . "https://elpa.gnu.org/packages/")
-                         ("ng elpa" . "https://elpa.nongnu.org/nongnu/")))
+                         ("elpa" . "https://elpa.gnu.org/packages/")))
 
 (package-initialize)
 (unless package-archive-contents
   (package-refresh-contents))
 
-(package-install 'org-contrib)
 (package-install 'htmlize)
 (package-install 'rust-mode)
 
 (require 'org)
 (require 'ox-publish)
+(load-file "./elisp/ox-rss.el")
 (require 'ox-rss)
 (require 'htmlize)
 
